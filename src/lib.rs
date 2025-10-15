@@ -1,5 +1,8 @@
 pub mod arena;
 
+use crate::arena::Arena;
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use std::cell::UnsafeCell;
 use std::fmt::Debug;
 use std::iter::Iterator;
@@ -7,9 +10,6 @@ use std::ptr;
 use std::ptr::{null_mut, NonNull};
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::{Arc, Mutex};
-use rand::{Rng, SeedableRng};
-use rand::rngs::StdRng;
-use crate::arena::Arena;
 
 const MAX_HEIGHT: usize = 12;
 const K_BRANCHING: usize = 4;
@@ -45,7 +45,6 @@ impl<K> Node<K> {
     }
 }
 
-
 pub struct SkipListIterator<'a, K: Ord + Debug + Default> {
     node: *mut Node<K>,
     list: &'a SkipListImpl<K>,
@@ -53,7 +52,10 @@ pub struct SkipListIterator<'a, K: Ord + Debug + Default> {
 
 impl<'a, K: Ord + Debug + Default> SkipListIterator<'a, K> {
     pub fn new(list: &'a SkipListImpl<K>) -> Self {
-        SkipListIterator { node: null_mut(), list }
+        SkipListIterator {
+            node: null_mut(),
+            list,
+        }
     }
 
     pub fn valid(&self) -> bool {
@@ -132,12 +134,17 @@ impl<K: Ord + Debug + Default> SkipListImpl<K> {
     /// This function should not be called before data ready.
     pub unsafe fn key_is_after_node(&self, key: &K, node: *const Node<K>) -> bool {
         unsafe {
-            node.as_ref().map(|n| &n.key)
+            node.as_ref()
+                .map(|n| &n.key)
                 .map_or(false, |node_key| node_key < key)
         }
     }
 
-    pub fn find_greater_or_equal(&self, key: &K, prev: &mut Option<&mut Vec<*mut Node<K>>>) -> *mut Node<K> {
+    pub fn find_greater_or_equal(
+        &self,
+        key: &K,
+        prev: &mut Option<&mut Vec<*mut Node<K>>>,
+    ) -> *mut Node<K> {
         let mut x = self.head.as_ptr();
         let mut level = self.get_max_height() - 1;
         loop {
@@ -242,7 +249,7 @@ impl<K: Ord + Debug + Default> SkipListImpl<K> {
     }
 }
 
-struct SkipList<K: Ord + Debug + Default> {
+pub struct SkipList<K: Ord + Debug + Default> {
     skip_list: Arc<UnsafeCell<SkipListImpl<K>>>,
     write_lock: Mutex<()>,
 }
@@ -266,27 +273,23 @@ impl<K: Ord + Debug + Default> SkipList<K> {
     }
 
     pub fn contains(&self, key: &K) -> bool {
-        unsafe {
-            (*self.skip_list.get()).contains(key)
-        }
+        unsafe { (*self.skip_list.get()).contains(key) }
     }
 
     pub fn iter(&self) -> SkipListIterator<K> {
-        unsafe {
-            SkipListIterator::new(&*self.skip_list.get())
-        }
+        unsafe { SkipListIterator::new(&*self.skip_list.get()) }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Condvar, Mutex};
+    use super::{SkipList, SkipListImpl, SkipListIterator};
+    use crate::arena::Arena;
+    use rand::{random, Rng, SeedableRng};
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::{Arc, Condvar, Mutex};
     use std::thread;
     use std::time::Duration;
-    use rand::{random, Rng, SeedableRng};
-    use crate::arena::Arena;
-    use super::{SkipListImpl, SkipListIterator, SkipList};
     #[test]
     fn test_empty() {
         let arena = Arena::new();
@@ -396,9 +399,15 @@ mod tests {
 
     type Key = u64;
 
-    fn key(key: Key) -> u64 { key >> 40 }
-    fn gen(key: Key) -> u64 { (key >> 8) & 0xffffffff }
-    fn hash(key: Key) -> u64 { key & 0xff }
+    fn key(key: Key) -> u64 {
+        key >> 40
+    }
+    fn gen(key: Key) -> u64 {
+        (key >> 8) & 0xffffffff
+    }
+    fn hash(key: Key) -> u64 {
+        key & 0xff
+    }
 
     fn hash_numbers(k: u64, g: u64) -> u64 {
         use std::collections::hash_map::DefaultHasher;
@@ -603,15 +612,25 @@ mod tests {
     }
 
     #[test]
-    fn concurrent_1() { run_concurrent(1); }
+    fn concurrent_1() {
+        run_concurrent(1);
+    }
     #[test]
-    fn concurrent_2() { run_concurrent(2); }
+    fn concurrent_2() {
+        run_concurrent(2);
+    }
     #[test]
-    fn concurrent_3() { run_concurrent(3); }
+    fn concurrent_3() {
+        run_concurrent(3);
+    }
     #[test]
-    fn concurrent_4() { run_concurrent(4); }
+    fn concurrent_4() {
+        run_concurrent(4);
+    }
     #[test]
-    fn concurrent_5() { run_concurrent(5); }
+    fn concurrent_5() {
+        run_concurrent(5);
+    }
 
     #[test]
     fn test_concurrent_write() {
@@ -640,7 +659,7 @@ mod tests {
                 let end = start + 100;
                 for _ in start..end {
                     let key = rng.gen_range(0..1000);
-                    let contains =  skiplist_clone.contains(&key);
+                    let contains = skiplist_clone.contains(&key);
                     println!("Thread {} queried: {}, result: {}", i, key, contains);
                     thread::sleep(Duration::from_millis(1));
                 }
